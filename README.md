@@ -1,25 +1,63 @@
 # Mathematical Reasoning Evaluator
 
-A lightweight evaluator for checking LLM-generated math answers with SymPy.
+Prototype evaluation tool for benchmarking LLM-generated mathematical answers using symbolic equivalence and randomized numeric validation with SymPy.
 
-The project has:
-- A Streamlit app for interactive runs
-- A sample runner script for reproducible CLI demos
-- A core engine that generates answers via OpenAI and scores correctness
+The project provides a small evaluation pipeline that can generate model answers, verify correctness, and produce benchmark metrics across datasets and models.
+
+It is intended as a lightweight experimentation environment for studying LLM mathematical reasoning performance.
+
+## Interface
+
+### Custom Input Mode
+
+![Custom Input UI](data/docs/ui_custom_input.png)
+
+Upload a dataset or paste problems directly and evaluate model responses.
+
+### Dataset Benchmark Runner
+
+![Dataset Benchmark](data/docs/ui_dataset_runner.png)
+
+Run built-in benchmark datasets and compare model accuracy.
+
+### Example Results
+
+![Benchmark Results](data/docs/ui_results.png)
+
+Per-row scoring with symbolic validation and aggregated metrics.
 
 ## Features
 
-- LLM-generated `ai_response` (OpenAI provider)
-- Symbolic equivalence checking with SymPy
-- Partial-credit scoring via randomized substitution
-- Tabular results with:
-  - `problem_id`
-  - `problem`
-  - `ai_response`
-  - `correct_answer`
-  - `is_correct`
-  - `score`
-- CSV export in Streamlit
+- OpenAI-based answer generation (`ai_response`)
+- Symbolic + sampled numeric scoring with SymPy
+- Streamlit app with:
+  - CSV/Excel upload (`problem`, `correct_answer`)
+  - Paste/edit text mode (`problem || correct_answer`)
+  - `Load Sample Problems` button
+  - Problem count + row format validation
+  - Summary metrics (Accuracy, Correct, Avg Score, Model)
+  - Multi-model benchmark in one run (OpenAI models)
+  - Built-in dataset runner (`GSM8K-lite`, `Symbolic Algebra`, `Calculus`)
+  - Color-highlighted correctness (`OK`/`X`)
+  - CSV download of evaluation results
+
+## Evaluation Pipeline
+
+The evaluator follows a simple pipeline:
+
+```text
+problem dataset
+      ↓
+LLM answer generation
+      ↓
+symbolic equivalence check (SymPy)
+      ↓
+numeric sampling fallback
+      ↓
+per-row scoring
+      ↓
+benchmark aggregation
+```
 
 ## Project Structure
 
@@ -31,70 +69,56 @@ app/
     helpers.py
     evaluator.py
     engine.py
+    input/
+      parsing.py
+      samples.py
+      datasets.py
+    benchmark.py
   providers/
     base.py
     openai_provider.py
   stream_app.py
 examples/
   sample_run.py
+data/
+  sample_data.xlsx
+  benchmarks/
+    gsm8k_lite.csv
+    symbolic_algebra.csv
+    calculus.csv
 ```
-
-## Requirements
-
-- Python 3.10+
-- OpenAI API key
 
 ## Setup
 
-Create and activate a virtual environment
-
-  ```bash
-  python -m venv .venv
-  ```
+```bash
+python -m venv .venv
+```
 
 Windows PowerShell:
 
-  ```powershell
-  .venv\Scripts\Activate.ps1
-  ```
+```powershell
+.venv\Scripts\Activate.ps1
+```
 
+```bash
+pip install -r requirements.txt
+```
 
-Configure environment
+Create `.env` from `.env.example` and set:
 
-  ```bash
-  cp .env.example .env
-  ```
+```env
+OPENAI_API_KEY=your_key_here
+```
 
-Set:
+## Run
 
-  ```env
-  OPENAI_API_KEY=your_key_here
-  ```
-
-Install dependencies:
-
-  ```bash
-  pip install -r requirements.txt
-  ```
-
-## Run Streamlit App
+Streamlit UI:
 
 ```bash
 streamlit run app/stream_app.py
 ```
 
-Input format in the app:
-- One row per line
-- `problem || correct_answer`
-
-Example:
-
-```text
-(x-3)**2 || x**2 - 6*x + 9
-(x+4)*(x+2) || 20*x**4 - 2*x
-```
-
-## Run Sample Script
+CLI sample:
 
 ```bash
 python examples/sample_run.py
@@ -105,6 +129,45 @@ or
 ```bash
 python -m examples.sample_run
 ```
+
+## Dataset File
+
+You can directly upload the provided sample dataset from:
+
+- `data/sample_data.xlsx`
+
+Expected columns:
+
+- `problem`
+- `correct_answer`
+
+## Dataset Runner
+
+The app includes a benchmark runner with built-in datasets:
+
+- `GSM8K-lite`
+- `Symbolic Algebra`
+- `Calculus`
+
+In `Dataset Runner` tab:
+
+1. Select dataset
+2. Select one or more models
+3. Click `Run Dataset Benchmark`
+
+The app shows a model leaderboard table:
+
+- `model`
+- `accuracy`
+- `correct`
+- `total`
+- `avg_score`
+- `errors`
+
+## Multi-Model Support
+
+The app currently benchmarks multiple OpenAI models in one run.
+Provider abstraction exists in `app/providers/`, so non-OpenAI providers can be added later.
 
 ## Programmatic Usage
 
@@ -119,13 +182,7 @@ df = pd.DataFrame(
             "problem": "(x+1)**2",
             "ai_response": "x**2 + 2*x + 1",
             "correct_answer": "x**2 + 2*x + 1",
-        },
-        {
-            "problem_id": 2,
-            "problem": "diff(3*x**3, x)",
-            "ai_response": "9*x**2",
-            "correct_answer": "9*x**2",
-        },
+        }
     ]
 )
 
@@ -133,8 +190,13 @@ scored = evaluate_dataframe(df, ai_col="ai_response", correct_col="correct_answe
 print(scored[["problem_id", "problem", "ai_response", "correct_answer", "is_correct", "score"]])
 ```
 
-## Scoring Notes
+## Limitations
 
-- Exact symbolic equality is attempted first.
-- If exact match fails, expressions/equations are numerically sampled.
-- `is_correct` is `OK` when `score >= 0.9999`, else `X`.
+This is an experimental evaluator and currently supports a limited subset of mathematical reasoning tasks.
+
+Known limitations include:
+
+- relies on SymPy-compatible expression parsing
+- limited handling of inequalities and multi-step derivations
+- numeric sampling may produce false positives in rare cases
+- designed for experimentation rather than production benchmarking
