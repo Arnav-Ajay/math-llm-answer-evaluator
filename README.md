@@ -1,71 +1,140 @@
-# Mathematical Reasoning Evaluator (PoC)
+# Mathematical Reasoning Evaluator
 
-Lightweight evaluator that tests AI-generated math solutions for correctness using SymPy and Pandas. Includes a Streamlit UI for live input and optional integration with OpenAI models to benchmark responses.
+A lightweight evaluator for checking LLM-generated math answers with SymPy.
+
+The project has:
+- A Streamlit app for interactive runs
+- A sample runner script for reproducible CLI demos
+- A core engine that generates answers via OpenAI and scores correctness
 
 ## Features
 
-- Symbolic comparison of algebra/calculus expressions and simple equations
-- Binary or partial scoring via randomized numeric checks
-- Streamlit UI for user-entered problems and answers
-- Optional OpenAI integration to generate candidate solutions from selected models
-- Export results as CSV
+- LLM-generated `ai_response` (OpenAI provider)
+- Symbolic equivalence checking with SymPy
+- Partial-credit scoring via randomized substitution
+- Tabular results with:
+  - `problem_id`
+  - `problem`
+  - `ai_response`
+  - `correct_answer`
+  - `is_correct`
+  - `score`
+- CSV export in Streamlit
 
-## Quickstart
+## Project Structure
 
-1) Create a virtual environment (recommended) and install deps
-
+```text
+app/
+  core/
+    config.py
+    schemas.py
+    helpers.py
+    evaluator.py
+    engine.py
+  providers/
+    base.py
+    openai_provider.py
+  stream_app.py
+examples/
+  sample_run.py
 ```
-python -m venv .venv
-. .venv/bin/activate  # Windows PowerShell: .venv\\Scripts\\Activate.ps1
-pip install -r requirements.txt
+
+## Requirements
+
+- Python 3.10+
+- OpenAI API key
+
+## Setup
+
+Create and activate a virtual environment
+
+  ```bash
+  python -m venv .venv
+  ```
+
+Windows PowerShell:
+
+  ```powershell
+  .venv\Scripts\Activate.ps1
+  ```
+
+
+Configure environment
+
+  ```bash
+  cp .env.example .env
+  ```
+
+Set:
+
+  ```env
+  OPENAI_API_KEY=your_key_here
+  ```
+
+Install dependencies:
+
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+## Run Streamlit App
+
+```bash
+streamlit run app/stream_app.py
 ```
 
-2) (Optional) Configure API keys in `.env`
+Input format in the app:
+- One row per line
+- `problem || correct_answer`
 
-```
-cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=...
-```
+Example:
 
-3) Run the Streamlit app
-
-```
-streamlit run app/ui_streamlit.py
+```text
+(x-3)**2 || x**2 - 6*x + 9
+(x+4)*(x+2) || 20*x**4 - 2*x
 ```
 
-## How Scoring Works
+## Run Sample Script
 
-- Exact symbolic equality: Attempts to parse both sides and uses `sympy.simplify` to detect equality.
-- Equation handling: Supports `x=2` form by comparing differences (LHS-RHS) symbolically.
-- Partial credit: If exact check fails, samples random numeric assignments for free symbols and computes a fraction of points where expressions match within tolerance.
+```bash
+python examples/sample_run.py
+```
 
-## Example Programmatic Usage
+or
+
+```bash
+python -m examples.sample_run
+```
+
+## Programmatic Usage
 
 ```python
 import pandas as pd
-from app.evaluator import evaluate_math, evaluate_dataframe
+from app.core.evaluator import evaluate_dataframe
 
-data = [
-    {"problem_id": 1, "problem": "(x+1)**2", "ai_response": "x**2 + 2*x + 1", "correct_answer": "x**2 + 2*x + 1"},
-    {"problem_id": 2, "problem": "diff(3*x**3, x)", "ai_response": "9*x**2", "correct_answer": "9*x**2"},
-    {"problem_id": 3, "problem": "2*x + 4 - 8", "ai_response": "x=3", "correct_answer": "x=2"},
-]
+df = pd.DataFrame(
+    [
+        {
+            "problem_id": 1,
+            "problem": "(x+1)**2",
+            "ai_response": "x**2 + 2*x + 1",
+            "correct_answer": "x**2 + 2*x + 1",
+        },
+        {
+            "problem_id": 2,
+            "problem": "diff(3*x**3, x)",
+            "ai_response": "9*x**2",
+            "correct_answer": "9*x**2",
+        },
+    ]
+)
 
-df = pd.DataFrame(data)
-res = evaluate_dataframe(df, ai_col="ai_response", correct_col="correct_answer")
-print(res[["problem_id", "ai_response", "correct_answer", "is_correct", "score"]])
+scored = evaluate_dataframe(df, ai_col="ai_response", correct_col="correct_answer")
+print(scored[["problem_id", "problem", "ai_response", "correct_answer", "is_correct", "score"]])
 ```
 
-Expected output:
-```
-   problem_id     ai_response    correct_answer is_correct  score
-0           1  x**2 + 2*x + 1  x**2 + 2*x + 1          ✅    1.0
-1           2          9*x**2          9*x**2          ✅    1.0
-2           3              x=3              x=2          ❌    0.0
-```
+## Scoring Notes
 
-## Notes
-
-- The OpenAI integration is optional and only used if an API key is present.
-- Input should be SymPy-compatible where possible (e.g., `^` becomes `**`, `diff(3*x**3, x)`).
-- This is a PoC; extend as needed for inequalities, systems, and more robust parsing.
+- Exact symbolic equality is attempted first.
+- If exact match fails, expressions/equations are numerically sampled.
+- `is_correct` is `OK` when `score >= 0.9999`, else `X`.
