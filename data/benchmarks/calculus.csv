@@ -1,0 +1,11 @@
+problem,correct_answer
+"diff(x**3, x)", "3*x**2"
+"diff(5*x**4 - x, x)" , "20*x**3 - 1"
+"diff(sin(x), x)" , "cos(x)"
+"diff(exp(2*x), x)", "2*exp(2*x)"
+"integrate(4*x**3, x)", "x**4"
+"integrate(6*x, x)", "3*x**2"
+"integrate(cos(x), x)", "sin(x)"
+"integrate(2*exp(2*x), x)","exp(2*x)"
+"diff(log(x), x)", "1/x"
+"diff(x**2 + 3*x + 1, x)", "2*x + 3"
