@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import List
@@ -30,10 +31,29 @@ st.set_page_config(page_title="Maths Answer Evaluator", layout="wide")
 st.title("Mathematical Answer Evaluator")
 st.caption("Symbolically verifies LLM math answers using SymPy.")
 
-
 @st.cache_data
 def _available_models() -> List[str]:
     return OpenAIProvider.default_models()
+
+
+def _get_effective_api_key(user_key: str) -> str | None:
+    """Get the effective API key from user input or environment."""
+    if user_key and OpenAIProvider.validate_api_key(user_key):
+        return user_key
+    # Fall back to environment variable
+    env_key = os.getenv("OPENAI_API_KEY")
+    if env_key and OpenAIProvider.validate_api_key(env_key):
+        return env_key
+    return None
+
+
+def _is_api_key_available(user_key: str) -> bool:
+    """Check if a valid API key is available from any source."""
+    effective_key = _get_effective_api_key(user_key)
+    if effective_key:
+        test_provider = OpenAIProvider(api_key=effective_key)
+        return test_provider.available()
+    return False
 
 
 def _load_uploaded_dataframe(uploaded_file) -> pd.DataFrame:
@@ -43,6 +63,66 @@ def _load_uploaded_dataframe(uploaded_file) -> pd.DataFrame:
     if name.endswith(".xlsx") or name.endswith(".xls"):
         return pd.read_excel(uploaded_file)
     raise ValueError("Unsupported file format. Use CSV or Excel.")
+
+
+# Sidebar for settings
+with st.sidebar:
+    st.header("Settings")
+    
+    # API Key input
+    api_key = st.text_input(
+        "OpenAI API Key", 
+        type="password", 
+        help="Enter your OpenAI API key to run evaluations (starts with 'sk-'). Leave empty to use .env file.",
+        key="openai_api_key"
+    )
+    
+    st.subheader("Models")
+    selected_models = st.multiselect(
+        "Select Models", 
+        options=_available_models(), 
+        default=_available_models()[:1],
+        key="global_models"
+    )
+    
+    st.subheader("Evaluation Parameters")
+    samples = st.slider("Partial Scoring Samples", min_value=1, max_value=20, value=DEFAULT_EVAL_SAMPLES)
+    tol = st.number_input("Tolerance", min_value=1e-9, max_value=1e-3, value=DEFAULT_EVAL_TOL, format="%.1e")
+    
+    st.subheader("Custom Input")
+    uploaded_file = st.file_uploader(
+        "Upload CSV/Excel (columns: problem, correct_answer)",
+        type=["csv", "xlsx", "xls"],
+        key="global_upload",
+    )
+    
+    # Handle file upload
+    if uploaded_file is not None:
+        upload_token = f"{uploaded_file.name}:{uploaded_file.size}"
+        if st.session_state.last_upload_token != upload_token:
+            try:
+                uploaded_df = _load_uploaded_dataframe(uploaded_file)
+                uploaded_actions, uploaded_issues = dataframe_to_actions(uploaded_df)
+                for issue in uploaded_issues:
+                    st.warning(issue)
+                if uploaded_actions:
+                    st.session_state.raw_rows = actions_to_text(uploaded_actions)
+                    st.success(f"Loaded {len(uploaded_actions)} problem(s) from {uploaded_file.name}.")
+                st.session_state.last_upload_token = upload_token
+            except Exception as e:
+                st.error(f"Failed to parse uploaded file: {e}")
+    
+    if st.button("Load Sample Problems", key="load_samples"):
+        st.session_state.raw_rows = sample_rows_text()
+        st.rerun()
+    
+    st.subheader("Dataset Runner")
+    dataset_name = st.selectbox(
+        "Benchmark Dataset", 
+        options=available_benchmark_datasets(), 
+        index=0,
+        key="global_dataset"
+    )
 
 
 def _render_summary(summary_df: pd.DataFrame) -> None:
@@ -92,35 +172,9 @@ if "last_upload_token" not in st.session_state:
 tabs = st.tabs(["Custom Input", "Dataset Runner"])
 
 with tabs[0]:
-    col_load, _ = st.columns([1, 4])
-    with col_load:
-        if st.button("Load Sample Problems"):
-            st.session_state.raw_rows = sample_rows_text()
-
-    uploaded_file = st.file_uploader(
-        "Upload CSV / Excel (columns: problem, correct_answer)",
-        type=["csv", "xlsx", "xls"],
-        key="custom_upload",
-    )
-    if uploaded_file is not None:
-        upload_token = f"{uploaded_file.name}:{uploaded_file.size}"
-        if st.session_state.last_upload_token != upload_token:
-            try:
-                uploaded_df = _load_uploaded_dataframe(uploaded_file)
-                uploaded_actions, uploaded_issues = dataframe_to_actions(uploaded_df)
-                for issue in uploaded_issues:
-                    st.warning(issue)
-                if uploaded_actions:
-                    st.session_state.raw_rows = actions_to_text(uploaded_actions)
-                    st.success(f"Loaded {len(uploaded_actions)} problem(s) from {uploaded_file.name}.")
-                st.session_state.last_upload_token = upload_token
-            except Exception as e:
-                st.error(f"Failed to parse uploaded file: {e}")
-
+    st.subheader("Enter Problems")
+    
     with st.form("custom_form"):
-        models = st.multiselect("Models", options=_available_models(), default=_available_models()[:1])
-        samples = st.slider("Partial scoring samples", min_value=1, max_value=20, value=DEFAULT_EVAL_SAMPLES)
-        tol = st.number_input("Tolerance", min_value=1e-9, max_value=1e-3, value=DEFAULT_EVAL_TOL, format="%.1e")
         raw_rows = st.text_area(
             "Rows (one per line): problem || correct_answer",
             key="raw_rows",
@@ -136,18 +190,22 @@ with tabs[0]:
 
     if submitted_custom:
         actions, issues = parse_actions_text(raw_rows)
-        if not models:
-            st.error("Select at least one model.")
+        if not selected_models:
+            st.error("Select at least one model in the sidebar.")
+        elif not _is_api_key_available(api_key):
+            st.error("Please enter a valid OpenAI API key in the sidebar or ensure OPENAI_API_KEY is set in your .env file.")
         elif issues:
             for issue in issues:
                 st.error(issue)
         else:
+            effective_key = _get_effective_api_key(api_key)
             with st.spinner("Running benchmark across selected model(s)..."):
                 summary_df, details_df, bench_issues = run_openai_model_benchmark(
                     actions,
-                    models,
+                    selected_models,
                     samples=int(samples),
                     tol=float(tol),
+                    api_key=effective_key,
                 )
             for issue in bench_issues:
                 st.warning(issue)
@@ -156,33 +214,14 @@ with tabs[0]:
 
 with tabs[1]:
     st.subheader("Run Benchmark Dataset")
-    dataset_name = st.selectbox("Benchmark Dataset", options=available_benchmark_datasets(), index=0)
-    bench_models = st.multiselect(
-        "Models",
-        options=_available_models(),
-        default=_available_models()[:1],
-        key="bench_models",
-    )
-    bench_samples = st.slider(
-        "Partial scoring samples",
-        min_value=1,
-        max_value=20,
-        value=DEFAULT_EVAL_SAMPLES,
-        key="bench_samples",
-    )
-    bench_tol = st.number_input(
-        "Tolerance",
-        min_value=1e-9,
-        max_value=1e-3,
-        value=DEFAULT_EVAL_TOL,
-        format="%.1e",
-        key="bench_tol",
-    )
-
+    
     if st.button("Run Dataset Benchmark", type="primary"):
-        if not bench_models:
-            st.error("Select at least one model.")
+        if not selected_models:
+            st.error("Select at least one model in the sidebar.")
+        elif not _is_api_key_available(api_key):
+            st.error("Please enter a valid OpenAI API key in the sidebar or ensure OPENAI_API_KEY is set in your .env file.")
         else:
+            effective_key = _get_effective_api_key(api_key)
             actions, load_issues = load_benchmark_dataset(dataset_name)
             if load_issues:
                 for issue in load_issues:
@@ -192,9 +231,10 @@ with tabs[1]:
                 with st.spinner("Running dataset benchmark..."):
                     summary_df, details_df, bench_issues = run_openai_model_benchmark(
                         actions,
-                        bench_models,
-                        samples=int(bench_samples),
-                        tol=float(bench_tol),
+                        selected_models,
+                        samples=int(samples),
+                        tol=float(tol),
+                        api_key=effective_key,
                     )
                 for issue in bench_issues:
                     st.warning(issue)

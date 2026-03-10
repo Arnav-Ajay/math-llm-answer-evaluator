@@ -105,11 +105,21 @@ Windows PowerShell:
 pip install -r requirements.txt
 ```
 
-Create `.env` from `.env.example` and set:
+Create `.env` (optional for local development) and set:
 
 ```env
 OPENAI_API_KEY=your_key_here
 ```
+
+## Deployment
+
+For deployment (e.g., on Streamlit Cloud, Heroku, etc.), users can enter their OpenAI API key directly in the app's sidebar. The key is stored only in the user's session and not persisted anywhere.
+
+**API Key Format**: OpenAI API keys start with `sk-` and are approximately 51 characters long.
+
+For local development, you can set `OPENAI_API_KEY` in a `.env` file instead of entering it in the UI each time.
+
+No `.env` file is required for deployed instances - users provide their own keys through the UI.
 
 ## Run
 

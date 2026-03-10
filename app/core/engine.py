@@ -22,9 +22,9 @@ from app.providers import OpenAIProvider
 
 
 class OpenAIMathEngine:
-    def __init__(self, *, model: str = DEFAULT_OPENAI_MODEL) -> None:
+    def __init__(self, *, model: str = DEFAULT_OPENAI_MODEL, api_key: str | None = None) -> None:
         self.model = model
-        self.provider = OpenAIProvider()
+        self.provider = OpenAIProvider(api_key=api_key)
 
     def available(self) -> bool:
         return self.provider.available()

@@ -15,6 +15,7 @@ def run_openai_model_benchmark(
     *,
     samples: int = DEFAULT_EVAL_SAMPLES,
     tol: float = DEFAULT_EVAL_TOL,
+    api_key: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     actions_list = list(actions)
     summary_rows: list[dict] = []
@@ -22,7 +23,7 @@ def run_openai_model_benchmark(
     issues: list[str] = []
 
     for model in models:
-        engine = OpenAIMathEngine(model=model)
+        engine = OpenAIMathEngine(model=model, api_key=api_key)
         if not engine.available():
             issues.append(f"{model}: provider unavailable")
             continue

@@ -4,7 +4,7 @@ from __future__ import annotations
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_OPENAI_MODELS = [
     "gpt-4o-mini",
-    "o4-mini",
+    "o1-mini",
 ]
 
 DEFAULT_EVAL_SAMPLES = 8
